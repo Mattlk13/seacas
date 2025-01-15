@@ -38,9 +38,7 @@
 #include "Ioss_ScopeGuard.h"
 #include "Ioss_StructuredBlock.h"
 
-#if !defined __NVCC__
 #include <fmt/color.h>
-#endif
 #include <fmt/format.h>
 
 namespace {
@@ -386,10 +384,7 @@ namespace {
       auto        search = comms.find(std::make_pair(value, key));
       if (search == comms.end()) {
         valid = false;
-        fmt::print(stderr,
-#if !defined __NVCC__
-                   fg(fmt::color::red),
-#endif
+        fmt::print(stderr, fg(fmt::color::red),
                    "ERROR: Could not find matching ZGC for {}, proc {} -> {}, proc {}\n", key.first,
                    key.second, value.first, value.second);
       }
@@ -440,11 +435,8 @@ namespace {
         for (const auto &proc : comms) {
           if (proc.second < 0) {
             // From decomposition
-            fmt::print(
-#if !defined __NVCC__
-                fg(fmt::color::yellow),
-#endif
-                "[{:{}}->{:{}}]  ", proc.first, pw, -proc.second, pw);
+            fmt::print(fg(fmt::color::yellow), "[{:{}}->{:{}}]  ", proc.first, pw, -proc.second,
+                       pw);
           }
           else {
             // Zone to Zone
@@ -502,9 +494,7 @@ namespace {
     for (const auto &zone : zones) {
       if (zone->is_active()) {
         auto len = zone->m_name.length();
-        if (len > name_len) {
-          name_len = len;
-        }
+        name_len = std::max(name_len, len);
       }
     }
 
@@ -688,10 +678,7 @@ int main(int argc, char *argv[])
 
   auto valid = validate_symmetric_communications(zones);
   if (!valid) {
-    fmt::print(stderr,
-#if !defined __NVCC__
-               fg(fmt::color::red),
-#endif
+    fmt::print(stderr, fg(fmt::color::red),
                "\nERROR: Zone Grid Communication interfaces are not symmetric.  There is an error "
                "in the decomposition.\n");
   }

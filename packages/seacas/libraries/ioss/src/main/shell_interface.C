@@ -241,8 +241,15 @@ void IOShell::Interface::enroll_options()
                   nullptr, nullptr, true);
 #endif
 
+  options_.enroll("select_change_sets", Ioss::GetLongOption::MandatoryValue,
+                  "Read only the specified change set(s) (comma-separated list) from the input "
+                  "file.  Use \"ALL\" for all change sets (default).",
+                  nullptr);
+  options_.enroll(
+      "extract_change_set", Ioss::GetLongOption::MandatoryValue,
+      "Write the data from the specified change_set (formerly group) to the output file.", nullptr);
   options_.enroll("extract_group", Ioss::GetLongOption::MandatoryValue,
-                  "Write the data from the specified group to the output file.", nullptr);
+                  "[deprecated] Use `--extract_change_set`.", nullptr);
 
   options_.enroll(
       "split_times", Ioss::GetLongOption::MandatoryValue,
@@ -504,6 +511,10 @@ bool IOShell::Interface::parse_options(int argc, char **argv, int my_processor)
 
       if (szip + zlib + zstd + bz2 == 0) {
         zlib = true;
+        if (my_processor == 0) {
+          fmt::print(stderr, "INFO: Compression level specified, but no algorithm.  Defaulting to "
+                             "'zlib' and setting netcdf-4 file type.\n");
+        }
       }
 
       if (zlib) {
@@ -672,7 +683,9 @@ bool IOShell::Interface::parse_options(int argc, char **argv, int my_processor)
     }
   }
 
-  groupName = options_.get_option_value("extract_group", groupName);
+  selectedChangeSets = options_.get_option_value("select_change_sets", selectedChangeSets);
+  changeSetName      = options_.get_option_value("extract_group", changeSetName);
+  changeSetName      = options_.get_option_value("extract_change_set", changeSetName);
 
   {
     const char *temp = options_.retrieve("field_suffix_separator");
@@ -780,6 +793,15 @@ bool IOShell::Interface::parse_options(int argc, char **argv, int my_processor)
       Ioss::Utils::copyright(std::cerr, "1999-2022");
     }
     exit(EXIT_SUCCESS);
+  }
+
+  if (!changeSetName.empty() && !selectedChangeSets.empty()) {
+    if (my_processor == 0) {
+      fmt::print(
+          stderr,
+          "ERROR: Only one of 'extract_change_set' or 'select_change_sets'can be specified.\n");
+    }
+    return false;
   }
 
   // Parse remaining options as directory paths.
