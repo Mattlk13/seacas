@@ -8,9 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@91182cccc01eb5e619899d80e4e971d6181294a7 # v2.10.1
+        uses: step-security/harden-runner@4d991eb9b905ef189e4c376166672c3f2f230481 # v2.11.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-      - uses: harupy/find-trailing-whitespace@56310d70ae8fd21afec8d4307d2d9ab6c15e7c5d # master
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Find Trailing Whitespace
+        run: |
+          set +e
+
+          lines=$(git grep --cached -In '[[:blank:]]$' packages/seacas/applications packages/seacas/libraries)
+          if [ ! -z "$lines" ]; then
+             echo -e "\n The following lines contain trailing whitespace: \n"
+             echo -e "${lines}"
+             echo -e "\nFailed.\n"
+             exit 1
+          fi
+          exit 0

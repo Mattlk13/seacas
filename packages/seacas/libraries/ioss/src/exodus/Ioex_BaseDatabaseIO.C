@@ -233,9 +233,8 @@ namespace Ioex {
     }
     // This is also done down in the exodus library, but helps logic to do it here...
     if (util().get_environment("EXODUS_VERBOSE", isParallel)) {
-      fmt::print(
-          Ioss::DebugOut(),
-          "IOEX: Exodus error reporting set to VERBOSE because EXODUS_VERBOSE environment variable is set.\n");
+      fmt::print(Ioss::DebugOut(), "IOEX: Exodus error reporting set to VERBOSE because "
+                                   "EXODUS_VERBOSE environment variable is set.\n");
       ex_opts(EX_VERBOSE);
     }
 
@@ -268,40 +267,57 @@ namespace Ioex {
 
     // See if there are any properties that need to (or can) be
     // handled prior to opening/creating database...
+    if (properties.exists("FILE_TYPE")) {
+      std::string type = properties.get("FILE_TYPE").get_string();
+      type             = Ioss::Utils::lowercase(type);
+      if (type == "netcdf3" || type == "netcdf-3") {
+        exodusMode = EX_CLOBBER; // Reset back to default...
+      }
+      if (type == "netcdf4" || type == "netcdf-4" || type == "hdf5") {
 #if NC_HAS_HDF5
+        exodusMode |= EX_NETCDF4;
+#else
+        fmt::print(Ioss::OUTPUT(), "IOEX: HDF5/netcdf-4 is not supported in this build.  FILE_TYPE "
+                                   "setting will be ignored.\n");
+#endif
+      }
+      else if (type == "netcdf5" || type == "netcdf-5" || type == "cdf5") {
+#if NC_HAS_CDF5
+        exodusMode |= EX_64BIT_DATA;
+#else
+        fmt::print(Ioss::OUTPUT(), "IOEX: CDF5/netcdf-5 is not supported in this build.  FILE_TYPE "
+                                   "setting will be ignored.\n");
+#endif
+      }
+    }
+
+    if (properties.exists("ENABLE_FILE_GROUPS")) {
+#if NC_HAS_HDF5
+      exodusMode |= EX_NETCDF4;
+      exodusMode |= EX_NOCLASSIC;
+#else
+      fmt::print(Ioss::OUTPUT(), "IOEX: HDF5/netcdf-4 is not supported in this build.  "
+                                 "ENABLE_FILE_GROUPS setting will be ignored.\n");
+#endif
+    }
+
     bool compress = ((properties.exists("COMPRESSION_LEVEL") &&
                       properties.get("COMPRESSION_LEVEL").get_int() > 0) ||
                      (properties.exists("COMPRESSION_SHUFFLE") &&
                       properties.get("COMPRESSION_SHUFFLE").get_int() > 0));
 
     if (compress) {
-      exodusMode |= EX_NETCDF4;
-    }
-#endif
-
-    if (properties.exists("FILE_TYPE")) {
-      std::string type = properties.get("FILE_TYPE").get_string();
-      if (type == "netcdf3" || type == "netcdf-3") {
-        exodusMode = EX_CLOBBER; // Reset back to default...
-      }
 #if NC_HAS_HDF5
-      if (type == "netcdf4" || type == "netcdf-4" || type == "hdf5") {
+      if (!(exodusMode & EX_NETCDF4)) {
+        fmt::print(Ioss::OUTPUT(), "IOEX: Compression requires netcdf-4/HDF5-based file.  Setting "
+                                   "file type to netcdf-4.\n");
         exodusMode |= EX_NETCDF4;
       }
-#endif
-#if NC_HAS_CDF5
-      else if (type == "netcdf5" || type == "netcdf-5" || type == "cdf5") {
-        exodusMode |= EX_64BIT_DATA;
-      }
+#else
+      fmt::print(Ioss::OUTPUT(), "IOEX: HDF5/netcdf-4 is not supported in this build.  Compression "
+                                 "setting will be ignored.\n");
 #endif
     }
-
-#if NC_HAS_HDF5
-    if (properties.exists("ENABLE_FILE_GROUPS")) {
-      exodusMode |= EX_NETCDF4;
-      exodusMode |= EX_NOCLASSIC;
-    }
-#endif
 
     if (properties.exists("MAXIMUM_NAME_LENGTH")) {
       maximumNameLength = properties.get("MAXIMUM_NAME_LENGTH").get_int();
@@ -413,10 +429,6 @@ namespace Ioex {
         bool overwrite = true;
         handle_output_file(write_message, nullptr, nullptr, overwrite, abort_if_error);
       }
-
-      if (!m_groupName.empty()) {
-        ex_get_group_id(m_exodusFilePtr, m_groupName.c_str(), &m_exodusFilePtr);
-      }
     }
     assert(m_exodusFilePtr >= 0);
     fileExists = true;
@@ -507,9 +519,30 @@ namespace Ioex {
     }
 
     ex_set_max_name_length(m_exodusFilePtr, maximumNameLength);
+
+    open_root_group_nl();
+    open_child_group_nl(0);
   }
 
-  bool BaseDatabaseIO::open_root_group_nl()
+  bool BaseDatabaseIO::supports_internal_change_set_nl() { return supports_group(); }
+
+  bool BaseDatabaseIO::supports_group() const
+  {
+    Ioss::SerializeIO serializeIO_(this);
+    int               exoid = get_file_pointer();
+
+    int64_t format = ex_inquire_int(exoid, EX_INQ_FILE_FORMAT);
+
+    if (format < 0) {
+      std::ostringstream errmsg;
+      fmt::print(errmsg, "ERROR: Could not query file format for file '{}'.\n", get_filename());
+      IOSS_ERROR(errmsg);
+    }
+
+    return (NC_FORMAT_NETCDF4 == format);
+  }
+
+  bool BaseDatabaseIO::open_root_group_nl() const
   {
     // Get existing file pointer...
     bool success = false;
@@ -544,7 +577,28 @@ namespace Ioex {
     return success;
   }
 
-  bool BaseDatabaseIO::open_group_nl(const std::string &group_name)
+  bool BaseDatabaseIO::open_internal_change_set_nl(const std::string &set_name)
+  {
+    if (set_name == m_groupName) {
+      return true;
+    }
+
+    // Check name for '/' which is not allowed since it is the
+    // separator character in a full group path
+    if (set_name.find('/') != std::string::npos) {
+      std::ostringstream errmsg;
+      fmt::print(errmsg, "ERROR: Invalid group name '{}' contains a '/' which is not allowed.\n",
+                 set_name);
+      IOSS_ERROR(errmsg);
+    }
+
+    if (!open_root_group_nl())
+      return false;
+
+    return open_group_nl(set_name);
+  }
+
+  bool BaseDatabaseIO::open_group_nl(const std::string &group_name) const
   {
     // Get existing file pointer...
     bool success = false;
@@ -563,6 +617,14 @@ namespace Ioex {
     }
     success = true;
     return success;
+  }
+
+  bool BaseDatabaseIO::create_internal_change_set_nl(const std::string &set_name)
+  {
+    if (!open_root_group_nl())
+      return false;
+
+    return create_subgroup_nl(set_name);
   }
 
   bool BaseDatabaseIO::create_subgroup_nl(const std::string &group_name)
@@ -3228,7 +3290,24 @@ namespace Ioex {
     write_coordinate_frames(get_file_pointer(), get_region()->get_coordinate_frames());
   }
 
-  Ioss::NameList BaseDatabaseIO::groups_describe_nl(bool return_full_names)
+  Ioss::NameList BaseDatabaseIO::internal_change_set_describe_nl(bool return_full_names)
+  {
+    Ioss::NameList names = groups_describe(return_full_names);
+
+    // Downshift by 1 since the first is the root group "/"
+    int numNames = static_cast<int>(names.size());
+    for (int i = 0; i < numNames - 1; i++) {
+      names[i] = names[i + 1];
+    }
+
+    if (numNames > 0) {
+      names.resize(numNames - 1);
+    }
+
+    return names;
+  }
+
+  Ioss::NameList BaseDatabaseIO::groups_describe(bool return_full_names) const
   {
     Ioss::SerializeIO serializeIO_(this);
 
@@ -3262,7 +3341,27 @@ namespace Ioex {
     activeNodeSetNodesIndex.clear();
   }
 
-  int BaseDatabaseIO::num_child_group_nl()
+  int BaseDatabaseIO::num_internal_change_set_nl()
+  {
+    // Save and reset state
+    int         currentExodusFilePtr = m_exodusFilePtr;
+    std::string currentGroupName     = m_groupName;
+
+    if (!open_root_group_nl()) {
+      std::ostringstream errmsg;
+      fmt::print(errmsg, "ERROR: Could not open root group.\n", m_groupName);
+      IOSS_ERROR(errmsg);
+    }
+
+    int numChildGroup = num_child_group();
+
+    m_exodusFilePtr = currentExodusFilePtr;
+    m_groupName     = currentGroupName;
+
+    return numChildGroup;
+  }
+
+  int BaseDatabaseIO::num_child_group() const
   {
     Ioss::SerializeIO serializeIO_(this);
     int               exoid = get_file_pointer();
@@ -3271,7 +3370,18 @@ namespace Ioex {
     return num_children;
   }
 
-  bool BaseDatabaseIO::open_child_group_nl(int index)
+  bool BaseDatabaseIO::open_internal_change_set_nl(int index)
+  {
+    if (!open_root_group_nl()) {
+      std::ostringstream errmsg;
+      fmt::print(errmsg, "ERROR: Could not open root group.\n", m_groupName);
+      IOSS_ERROR(errmsg);
+    }
+
+    return open_child_group_nl(index);
+  }
+
+  bool BaseDatabaseIO::open_child_group_nl(int index) const
   {
     if (index < 0)
       return false;
