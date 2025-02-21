@@ -1,4 +1,4 @@
-// Copyright(C) 1999-2024 National Technology & Engineering Solutions
+// Copyright(C) 1999-2025 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
@@ -38,9 +38,7 @@
 #include "Ioss_ScopeGuard.h"
 #include "Ioss_StructuredBlock.h"
 
-#if !defined __NVCC__
 #include <fmt/color.h>
-#endif
 #include <fmt/format.h>
 
 namespace {
@@ -183,29 +181,31 @@ namespace {
     explicit Interface(std::string app_version) : version(std::move(app_version))
     {
       options_.usage("[options] input_file");
-      options_.enroll("help", Ioss::GetLongOption::NoValue, "Print this summary and exit", nullptr);
-      options_.enroll("processors", Ioss::GetLongOption::MandatoryValue, "Number of processors.",
+      options_.enroll("help", Ioss::GetLongOption::OptType::NoValue, "Print this summary and exit",
                       nullptr);
-      options_.enroll("ordinal", Ioss::GetLongOption::MandatoryValue,
+      options_.enroll("processors", Ioss::GetLongOption::OptType::MandatoryValue,
+                      "Number of processors.", nullptr);
+      options_.enroll("ordinal", Ioss::GetLongOption::OptType::MandatoryValue,
                       "Ordinal not to split 0(i), 1(j), 2(k), 3(ij), 4(ik), or 5(jk).", nullptr);
-      options_.enroll("line_decomposition", Ioss::GetLongOption::MandatoryValue,
+      options_.enroll("line_decomposition", Ioss::GetLongOption::OptType::MandatoryValue,
                       "list of 1 or more BC (Family) names.\n"
                       "\t\tFor all structured zones which this BC touches, the ordinal of the face "
                       "(i,j,k) will\n"
                       "\t\tbe set such that a parallel decomposition will not split the zone along "
                       "this ordinal.",
                       nullptr);
-      options_.enroll("load_balance", Ioss::GetLongOption::MandatoryValue,
+      options_.enroll("load_balance", Ioss::GetLongOption::OptType::MandatoryValue,
                       "Max ratio of processor work to average. [default 1.4]", nullptr);
-      options_.enroll("verbose", Ioss::GetLongOption::NoValue,
+      options_.enroll("verbose", Ioss::GetLongOption::OptType::NoValue,
                       "Print additional decomposition information", nullptr);
-      options_.enroll("db_type", Ioss::GetLongOption::MandatoryValue,
+      options_.enroll("db_type", Ioss::GetLongOption::OptType::MandatoryValue,
                       "Database Type: gen_struc or cgns. Default is cgns.", nullptr);
-      options_.enroll("output", Ioss::GetLongOption::MandatoryValue,
+      options_.enroll("output", Ioss::GetLongOption::OptType::MandatoryValue,
                       "What is printed: z=zone-proc assignment, h=histogram, w=work-per-processor, "
                       "c=comm map, v=verbose.",
                       "zhwc");
-      options_.enroll("version", Ioss::GetLongOption::NoValue, "Print version and exit", nullptr);
+      options_.enroll("version", Ioss::GetLongOption::OptType::NoValue, "Print version and exit",
+                      nullptr);
     }
     Ioss::GetLongOption options_;
     int                 proc_count{0};
@@ -386,10 +386,7 @@ namespace {
       auto        search = comms.find(std::make_pair(value, key));
       if (search == comms.end()) {
         valid = false;
-        fmt::print(stderr,
-#if !defined __NVCC__
-                   fg(fmt::color::red),
-#endif
+        fmt::print(stderr, fg(fmt::color::red),
                    "ERROR: Could not find matching ZGC for {}, proc {} -> {}, proc {}\n", key.first,
                    key.second, value.first, value.second);
       }
@@ -440,11 +437,8 @@ namespace {
         for (const auto &proc : comms) {
           if (proc.second < 0) {
             // From decomposition
-            fmt::print(
-#if !defined __NVCC__
-                fg(fmt::color::yellow),
-#endif
-                "[{:{}}->{:{}}]  ", proc.first, pw, -proc.second, pw);
+            fmt::print(fg(fmt::color::yellow), "[{:{}}->{:{}}]  ", proc.first, pw, -proc.second,
+                       pw);
           }
           else {
             // Zone to Zone
@@ -502,9 +496,7 @@ namespace {
     for (const auto &zone : zones) {
       if (zone->is_active()) {
         auto len = zone->m_name.length();
-        if (len > name_len) {
-          name_len = len;
-        }
+        name_len = std::max(name_len, len);
       }
     }
 
@@ -688,10 +680,7 @@ int main(int argc, char *argv[])
 
   auto valid = validate_symmetric_communications(zones);
   if (!valid) {
-    fmt::print(stderr,
-#if !defined __NVCC__
-               fg(fmt::color::red),
-#endif
+    fmt::print(stderr, fg(fmt::color::red),
                "\nERROR: Zone Grid Communication interfaces are not symmetric.  There is an error "
                "in the decomposition.\n");
   }

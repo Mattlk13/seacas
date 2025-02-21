@@ -55,12 +55,12 @@
 #endif
 
 /* EXODUS version number */
-#define EXODUS_VERSION       "9.02"
+#define EXODUS_VERSION       "9.04"
 #define EXODUS_VERSION_MAJOR 9
-#define EXODUS_VERSION_MINOR 2
-#define EXODUS_RELEASE_DATE  "August 27, 2024"
+#define EXODUS_VERSION_MINOR 4
+#define EXODUS_RELEASE_DATE  "November 5, 2024"
 
-#define EX_API_VERS       9.02f
+#define EX_API_VERS       9.04f
 #define EX_API_VERS_NODOT (100 * EXODUS_VERSION_MAJOR + EXODUS_VERSION_MINOR)
 #define EX_VERS           EX_API_VERS
 
@@ -215,6 +215,7 @@ enum ex_inquiry {
   EX_INQ_NUM_ELEM_SET_VAR    = 69, /**< number of element set variables */
   EX_INQ_NUM_SIDE_SET_VAR    = 70, /**< number of sideset variables */
   EX_INQ_NUM_GLOBAL_VAR      = 71, /**< number of global variables */
+  EX_INQ_FILE_FORMAT         = 72, /**< netCDF file format */
   EX_INQ_INVALID             = -1
 };
 
@@ -345,13 +346,13 @@ typedef struct ex_basis
   /*
    clang-format off
    *
-   * subc_dim: dimension of the subcell associated with the specified DoF ordinal 
+   * subc_dim: dimension of the subcell associated with the specified DoF ordinal
    *      -- 0 node, 1 edge, 2 face, 3 volume [Range: 0..3]
    * subc_ordinal: ordinal of the subcell relative to its parent cell
-   *      -- 0..n for each ordinal with the same subc dim [Range: <= DoF ordinal] 
-   * subc_dof_ordinal: ordinal of the DoF relative to the subcell 
-   * subc_num_dof: cardinality of the DoF set associated with this subcell. 
-   * xi, eta, mu (ξ, η, ζ): Parametric coordinate location of the DoF 
+   *      -- 0..n for each ordinal with the same subc dim [Range: <= DoF ordinal]
+   * subc_dof_ordinal: ordinal of the DoF relative to the subcell
+   * subc_num_dof: cardinality of the DoF set associated with this subcell.
+   * xi, eta, mu (ξ, η, ζ): Parametric coordinate location of the DoF
    *      -- (Only first ndim values are valid)
    *
    clang-format on
