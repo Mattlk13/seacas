@@ -1,30 +1,43 @@
-name: Mark stale issues and pull requests
+name: 'Stale Discussions (audit only)'
 
 on:
   schedule:
-  - cron: "30 1 * * *"
+    - cron: '23 8 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
-  stale:
-
-    permissions:
-      issues: write  # for actions/stale to close stale issues
-      pull-requests: write  # for actions/stale to close stale PRs
+  audit:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
     steps:
-    - name: Harden Runner
-      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-      with:
-        egress-policy: audit
-
-    - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-        stale-issue-message: 'Stale issue message'
-        stale-pr-message: 'Stale pull request message'
-        stale-issue-label: 'no-issue-activity'
-        stale-pr-label: 'no-pr-activity'
+      - name: List inactive discussions without changing them
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const {data: issues} = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', sort: 'updated', direction: 'desc', per_page: 100
+            });
+            const now = Date.now();
+            const candidates = issues.filter(issue => {
+              const minDays = 60;
+              return (now - Date.parse(issue.updated_at)) > minDays * 86400000;
+            });
+            const lines = [
+              '## Stale discussion candidates',
+              '',
+              'Read-only sample: the 100 most recently updated open issues and PRs.',
+              'No labels, locks, issues, or PRs were modified.',
+              '',
+              ...candidates.map(issue =>
+                '- #' + issue.number + ' ' + (issue.pull_request ? '(PR) ' : '(issue) ') +
+                issue.title.replace(/[\r\n]/g, ' ') + ' — last updated ' + issue.updated_at
+              )
+            ];
+            if (candidates.length === 0) lines.push('No candidates in the sampled window.');
+            await core.summary.addRaw(lines.join('\n') + '\n').write();
